@@ -62,3 +62,9 @@ if __name__ == "__main__":
     ols_grad_pred = ols_grad.predict(X_test)  # Make predictions using the testing set
     print_results(y_test, ols_grad_pred)
 
+    # Solve using LAD Regression (Quantile Regression with 50% Quantile, q=0.5)
+    print("\n---------- LAD Regression with NumPy ----------")
+    lad_np = LinearRegression(n_iter=1000, normalize=False, cost=1)  # Mean Absolute Error (MAE) as the cost function
+    lad_np.fit(X_train, y_train)  # Train the model using the training sets
+    lad_np_pred = lad_np.predict(X_test)  # Make predictions using the testing set
+    print_results(y_test, lad_np_pred)

@@ -1,7 +1,9 @@
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 from sklearn import datasets, linear_model
 from sklearn.metrics import mean_squared_error, r2_score
+import statsmodels.formula.api as smf
 
 from models.linear import LinearRegression
 
@@ -57,9 +59,16 @@ if __name__ == "__main__":
     ols_grad_pred = ols_grad.predict(diabetes_X_test)  # Make predictions using the testing set
     print_results(ols_grad, diabetes_y_test, ols_grad_pred)  # Print the results and coefficients
 
+    ## Statsmodels LAD Regression using Quantile Regression with 50% quantile (q=0.5)
+    print('\n------- LAD Regression with statsmodels Quantile Regression -------')
+    df = pd.DataFrame(np.hstack([diabetes_y_train[:, np.newaxis], diabetes_X_train]), columns=["y", "X"])
+    qreg = smf.quantreg("y ~ X", df) # Create linear regression object
+    qreg_res = qreg.fit(q=0.5)  # Make predictions using the testing set
+    print(qreg_res.summary())
+
     ## NumPy with LAD
     print('\n------- LAD Regression with NumPy -------')
-    lad_np = LinearRegression(n_iter=200, normalize=False, cost=1)  # Mean Absolute Error (MAE) as the cost function
+    lad_np = LinearRegression(n_iter=1000, normalize=False, cost=1)  # Mean Absolute Error (MAE) as the cost function
     lad_np.fit(diabetes_X_train, diabetes_y_train)  # Train the model using the training sets
     lad_np_pred = lad_np.predict(diabetes_X_test)  # Make predictions using the testing set
     print_results(lad_np, diabetes_y_test, lad_np_pred)  # Print the results and coefficients
@@ -72,8 +81,8 @@ if __name__ == "__main__":
              label='Numpy OLS with normal eq.')
     plt.plot(diabetes_X_test, ols_grad_pred, color='green', linewidth=2, linestyle='dotted',
              label='Numpy OLS with gradient descent')
-    #plt.plot(diabetes_X_test, lad_np_pred, color='orange', linewidth=2, linestyle='--',
-    #         label='Numpy LAD')
+    plt.plot(diabetes_X_test, lad_np_pred, color='orange', linewidth=2, linestyle='--',
+             label='Numpy LAD')
 
     plt.legend()
     plt.title("Linear Regression with sklearn and NumPy implementations")

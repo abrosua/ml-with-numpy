@@ -155,7 +155,8 @@ class LinearRegression:
         while n_iter < self.n_iter and error_diff > p_tol:
             n_iter += 1
             params_prev = self.params
-            self.params = normal_eq(X_star, self.y_)
+            A = np.dot(X_star.T, self.X_)
+            self.params = np.dot(np.linalg.pinv(A), np.dot(X_star.T, self.y_))  # inv(A) dot X.T dot y
             diff = self.y_ - np.dot(self.X_, self.params)
 
             # Mask the small values, to avoid negative zero
