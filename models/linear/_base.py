@@ -3,8 +3,8 @@ import warnings
 
 import numpy as np
 
-from ._math import check_invertible_array, feature_norm
-from ..utils import check_is_fitted, issparse
+from ._math import check_invertible_array, feature_norm, normal_eq
+from ..utils import check_is_fitted
 
 
 class LinearRegression:
@@ -31,7 +31,8 @@ class LinearRegression:
     intercept_: float or ndarray with (n_targets,)
                 Model's intercept point.
     """
-    def __init__(self, alpha: Optional[float] = None, n_iter: Optional[int] = None, cost: int = 2, verbose: int = 1):
+    def __init__(self, alpha: Optional[float] = None, n_iter: Optional[int] = None, normalize: bool = False,
+                 cost: int = 2, verbose: int = 1):
         # Checking the inputs for cost function option
         if cost not in [1, 2]:
             raise ValueError(f"Unknown cost function option (), choose between 1 or 2 only!")
@@ -56,9 +57,11 @@ class LinearRegression:
                 n_iter = 1000  # Using the default learning rate
 
         self.alpha = alpha  # Learning rate
-        self.n_iter = int(n_iter)  # Number of iteration
+        self.n_iter = None if n_iter is None else int(n_iter)  # Number of iteration
         self.cost_function = cost  # Cost function between Mean Squared or Absolute Error
         self.verbose = verbose  # Verbosal option
+        self.normalize = False if cost == 1 else normalize
+
         self.params = None
 
     def fit(self, X: np.array, y: np.array):
@@ -77,9 +80,17 @@ class LinearRegression:
                 The fitted Linear Regression model, based on X and y train dataset.
         """
         self.n_samples, self.n_features = X.shape
+        self.mean_ = np.mean(X, axis=0) if self.normalize else 0.0
+        self.std_ = np.std(X, axis=0) if self.normalize else 1.0
+
+        if not check_invertible_array(np.dot(X.T, X)):
+            warnings.warn("Singular matrix occurred! Please re-check the input features. "
+                          "However, the program still proceed since it's using a pseudo-inverse calculation.")
+
         self.X_ = np.hstack([
             np.ones([self.n_samples, 1]),  # Placeholder for the intercepts
-            feature_norm(X)  # Centering and normalize the data
+            # feature_norm(X) if self.normalize else X,
+            (X - self.mean_) / self.std_  # Centering and normalize the data
         ])
         self.y_ = y[:, np.newaxis]
 
@@ -106,37 +117,60 @@ class LinearRegression:
             2. Direct calculation with NORMAL EQUATION.
         """
         if self._use_grad:  # Gradient Descent method
+            self.n_iter_ = self.n_iter
             for i in range(self.n_iter):
                 grad = np.dot(self.X_.T, (np.dot(self.X_, self.params) - self.y_)) / self.n_samples
                 self.params = self.params - self.alpha * grad  # Updating the parameters
 
         else:  # Normal equation method
+            self.n_iter_ = None
             if self.n_features > 1e4:  # Avoiding large matrix operation!
                 raise ValueError(f"The number of feature is TOO LARGE "
                                  f"(n_features = {self.n_features})! "
                                  f"Please use the GRADIENT DESCENT method instead "
                                  f"to avoid large matrix operation.")
 
-            A = np.dot(self.X_.T, self.X_)
-            if not check_invertible_array(A):
-                warnings.warn("Singular matrix occurred! Please re-check the input features. "
-                              "However, the program still proceed since it's using a pseudo-inverse calculation.")
-
-            self.params = np.dot(np.dot(np.linalg.pinv(A), self.X_.T), self.y_)  # inv(A) dot X.T dot y
+            self.params = normal_eq(self.X_, self.y_)  # inv(X.T dot X) dot X.T dot y
 
     def _update_param_absolute(self) -> None:
         """
         Gradient descent with Mean Absolute Error cost function.
-        Also known as the Least Absolute Deviation (LAD) Regression model.
+        Also known as the Least Absolute Deviation (LAD) Regression model. Unlike the Least Square method,
+        one does not simply compute the least absolute deviation efficiently, since the LAD regression does NOT
+        have an analytical solving method, where the cost function minimization result is an IMPLICIT function.
 
-        Originally any cost function minimization can be done simply with the optimize module
+        Originally any cost function minimization computation can be done simply with the optimize module
         by scipy (scipy.optimize.minimize). However, since this model implementation only uses NumPy,
         another approach should be used to solve the LAD Regression model.
+
+        In this case a Quantile Regression with 50% quantile will be used instead since
+        it is actually and generalized LAD model.
         """
-        if self._use_grad:  # Gradient Descent method
-            pass
-        else:  # Normal equation method
-            pass
+        # Init. value for iteration
+        X_star = self.X_
+        error_diff = 10
+        p_tol = 1e-6  # Error tolerance
+        n_iter = 0
+
+        while n_iter < self.n_iter and error_diff > p_tol:
+            n_iter += 1
+            params_prev = self.params
+            self.params = normal_eq(X_star, self.y_)
+            diff = self.y_ - np.dot(self.X_, self.params)
+
+            # Mask the small values, to avoid negative zero
+            mask = np.abs(diff) < 0.000001
+            diff[mask] = (2 * (diff[mask] >= 0) - 1) * 0.000001
+            # diff = np.where(diff < 0, q * diff, (1 - q) * diff)
+            diff = np.abs(0.5 * diff)
+            X_star = self.X_ / diff
+            error_diff = np.max(np.abs(self.params - params_prev))
+
+        self.error_diff = error_diff
+        if n_iter == self.n_iter:
+            warnings.warn(f"Maximum number of iterations ({n_iter}) reached.")  #, IterationLimitWarning)
+        else:
+            self.n_iter_ = n_iter
 
     def predict(self, X) -> np.array:
         """
@@ -159,7 +193,7 @@ class LinearRegression:
 
         X_ = np.hstack([
             np.ones([n_samples, 1]),
-            feature_norm(X)
+            (X - self.mean_) / self.std_
         ])
         y_pred = np.dot(X_, self.params)
         return y_pred
@@ -201,7 +235,7 @@ class LinearRegression:
             n_samples, _ = X.shape
             X_ = np.hstack([
                 np.ones([n_samples, 1]),
-                feature_norm(X)
+                (X - self.mean_) / self.std_
             ])
 
         if y is None:
