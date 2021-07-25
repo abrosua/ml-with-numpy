@@ -30,7 +30,7 @@ if __name__ == "__main__":
     print(f"Cumulative explained variance ratio: {round(100 * pca.explained_variance_ratio_.sum(), 2)}%")
 
     # Splitting dataset into train and test set (80:20)
-    order = np.random.permutation(len(y))
+    order = np.random.RandomState(24).permutation(len(y))
     test_portion = 0.2
     point_divide = int(test_portion * len(y))
     X_train = X_pca[order[point_divide:]]
