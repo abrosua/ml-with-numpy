@@ -3,7 +3,7 @@ import warnings
 
 import numpy as np
 
-from ._math import check_invertible_array, feature_norm, normal_eq
+from ._math import check_invertible_array, normal_eq
 from ..utils import check_is_fitted
 
 
@@ -13,23 +13,44 @@ class LinearRegression:
 
     The Linear Regression model try to fit a linear model with weights coefficient,
     and bias intercept, by minimizing the error differences between the prediction
-    and the target label. Unlike the scikit-learn implementation,
-    this model automatically perform data centering onto the input dataset.
+    and the target label. This model consist of 3 types of different Linear Regression implementations:
+    1. Ordinary Least Square (OLS) Regression - using Mean Squared Error (MSE) as the cost function
+        a, Solved directly using Normal Equation.
+        b. Solved iteratively using Gradient Descent.
+    2. Least Absolute Deviation (LAD) Regression - using Mean Absolute Error (MAE) as the cost function
+        a. Solved using Quantile Regression approach with 50% quantile (q=0.5).
+            This is because computing the minimization of MAE cost function is NOT computationally efficient,
+            especially using NumPy only!
 
     Parameters
     ----------
-    a
+    alpha:      None or float.
+                The learning rate for updating the trained parameters duing the Gradient Descent method.
+                only used for solving the OLS regression with gradient descent.
+    n_iter:     None or int.
+                The number of maximum iteration for the OLS regression with gradient descent and the LAD regression.
+    normalize:  bool.
+                Performing feature normalization or not.
+    cost:       int. 1 or 2. Choosing between l1 or l2 cost function
+                l1 is MAE (LAD Regression) while l2 is MSE (OLS Regression).
+    verbose:    int. 0 or 1.
+                The verbosal status.
 
     Attributes
     ----------
-    coef_:  ndarray with (n_features,) or (n_targets, n_features) shape.
-            The trained parameters (model's coefficient) of the Linear Regression.
-            n_features is the number of parsed features while
-            n_targets is the number of targets used if the target label (y) is in 2D.
-            i.e., y is an ndarray with (n_samples, n_target) shape
-
+    coef_:      ndarray with (n_features,) or (n_targets, n_features) shape.
+                The trained parameters (model's coefficient) of the Linear Regression.
+                n_features is the number of parsed features while
+                n_targets is the number of targets used if the target label (y) is in 2D.
+                i.e., y is an ndarray with (n_samples, n_target) shape
     intercept_: float or ndarray with (n_targets,)
                 Model's intercept point.
+    mean_:      float.
+                The mean value of each features, based on the training set.
+    n_iter_:    int.
+                Number of iterations that being performed.
+    std_:       float.
+                The standard deviation value of each features, based on the training set.
     """
     def __init__(self, alpha: Optional[float] = None, n_iter: Optional[int] = None, normalize: bool = False,
                  cost: int = 2, verbose: int = 1):
@@ -38,29 +59,43 @@ class LinearRegression:
             raise ValueError(f"Unknown cost function option (), choose between 1 or 2 only!")
 
         # Checking the inputs for alpha and n_iter
-        if alpha is None and n_iter is None:
-            self._use_grad = False
-            print("Solving the Linear Regression using NORMAL EQUATION method!") if verbose else None
+        if cost == 2:  # Mean squared cost function
+            if alpha is None and n_iter is None:
+                self._use_grad = False
+                print("Solving the OLS Linear Regression using NORMAL EQUATION method...") if verbose else None
 
-        else:
-            self._use_grad = True
-            print("Solving the Linear Regression using GRADIENT DESCENT method!") if verbose else None
-            if alpha is None and n_iter is not None:
-                warnings.warn("Attempting to solve the linear regression using GRADIENT DESCENT but "
-                              "the LEARNING RATE was NOT found! Proceed with the default value instead, "
-                              "alpha = 0.001")
-                alpha = 0.001  # Using the default learning rate
-            elif alpha is not None and n_iter is None:
-                warnings.warn("Attempting to solve the linear regression using GRADIENT DESCENT but "
-                              "the NUMBER OF ITERATION was NOT found! Proceed with the default value instead, "
-                              "n_iter = 1000")
-                n_iter = 1000  # Using the default learning rate
+            else:
+                self._use_grad = True
+                print("Solving the OLS Linear Regression using GRADIENT DESCENT method...") if verbose else None
+                if not normalize:
+                    normalize = True
+                    print("Automatically normalize the input feature because "
+                          "GRADIENT DESCENT method is chosen!") if verbose else None
+
+                if alpha is None and n_iter is not None:
+                    warnings.warn("Attempting to solve the linear regression using GRADIENT DESCENT but "
+                                  "the LEARNING RATE was NOT found! Proceed with the default value instead, "
+                                  "alpha = 0.001")
+                    alpha = 0.001  # Using the default learning rate
+                elif alpha is not None and n_iter is None:
+                    warnings.warn("Attempting to solve the linear regression using GRADIENT DESCENT but "
+                                  "the NUMBER OF ITERATION was NOT found! Proceed with the default value instead, "
+                                  "n_iter = 1000")
+                    n_iter = 1000  # Using the default learning rate
+        else:  # Mean absolute cost function
+            print("Solving the LAD Linear Regression...") if verbose else None
+            if normalize:
+                normalize = False
+                print("Feature normalization would NOT be used for the LAD Regression...")
+            if n_iter is None:
+                n_iter = 1000
+                print(f"Number of iterations is set to its default value (n_iter={n_iter})!") if verbose else None
 
         self.alpha = alpha  # Learning rate
         self.n_iter = None if n_iter is None else int(n_iter)  # Number of iteration
         self.cost_function = cost  # Cost function between Mean Squared or Absolute Error
         self.verbose = verbose  # Verbosal option
-        self.normalize = False if cost == 1 else normalize
+        self.normalize = normalize
 
         self.params = None
 
